@@ -17,6 +17,8 @@ following properties:
     method.
   * `url` string (optional) - The request URL. Must be provided in the absolute
     form with the protocol scheme specified as http or https.
+  * `headers` Record\<string, string | string[]\> (optional) - Headers to be sent
+    with the request.
   * `session` Session (optional) - The [`Session`](session.md) instance with
     which the request is associated.
   * `partition` string (optional) - The name of the [`partition`](session.md)
@@ -51,7 +53,7 @@ following properties:
     [`request.followRedirect`](#requestfollowredirect) is invoked synchronously
     during the [`redirect`](#event-redirect) event.  Defaults to `follow`.
   * `origin` string (optional) - The origin URL of the request.
-  * `referrerPolicy` string (optional) - can be `""`, `no-referrer`,
+  * `referrerPolicy` string (optional) - can be "", `no-referrer`,
     `no-referrer-when-downgrade`, `origin`, `origin-when-cross-origin`,
     `unsafe-url`, `same-origin`, `strict-origin`, or
     `strict-origin-when-cross-origin`. Defaults to
@@ -158,7 +160,7 @@ Returns:
 * `statusCode` Integer
 * `method` string
 * `redirectUrl` string
-* `responseHeaders` Record<string, string[]>
+* `responseHeaders` Record\<string, string[]\>
 
 Emitted when the server returns a redirect response (e.g. 301 Moved
 Permanently). Calling [`request.followRedirect`](#requestfollowredirect) will

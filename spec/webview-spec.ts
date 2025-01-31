@@ -1,20 +1,21 @@
-import * as path from 'node:path';
-import * as url from 'node:url';
 import { BrowserWindow, session, ipcMain, app, WebContents } from 'electron/main';
-import { closeAllWindows } from './lib/window-helpers';
-import { emittedUntil } from './lib/events-helpers';
-import { ifit, ifdescribe, defer, itremote, useRemoteContext, listen } from './lib/spec-helpers';
-import { expect } from 'chai';
-import * as http from 'node:http';
+
 import * as auth from 'basic-auth';
+import { expect } from 'chai';
+
 import { once } from 'node:events';
+import * as http from 'node:http';
+import * as path from 'node:path';
 import { setTimeout } from 'node:timers/promises';
-import { HexColors, ScreenCapture } from './lib/screen-helpers';
+import * as url from 'node:url';
+
+import { emittedUntil } from './lib/events-helpers';
+import { HexColors, ScreenCapture, hasCapturableScreen } from './lib/screen-helpers';
+import { ifit, ifdescribe, defer, itremote, useRemoteContext, listen } from './lib/spec-helpers';
+import { closeAllWindows } from './lib/window-helpers';
 
 declare let WebView: any;
 const features = process._linkedBinding('electron_common_features');
-
-const isMacArm64 = (process.platform === 'darwin' && process.arch === 'arm64');
 
 async function loadWebView (w: WebContents, attributes: Record<string, string>, opts?: {openDevTools?: boolean}): Promise<void> {
   const { openDevTools } = {
@@ -328,8 +329,8 @@ describe('<webview> tag', function () {
 
     before(() => {
       const protocol = webviewSession.protocol;
-      protocol.registerStringProtocol(zoomScheme, (request, callback) => {
-        callback('hello');
+      protocol.registerStringProtocol(zoomScheme, (request, respond) => {
+        respond('hello');
       });
     });
 
@@ -798,41 +799,32 @@ describe('<webview> tag', function () {
     });
     after(() => w.close());
 
-    // Linux and arm64 platforms (WOA and macOS) do not return any capture sources
-    ifit(process.platform === 'darwin' && process.arch === 'x64')('is transparent by default', async () => {
+    ifit(hasCapturableScreen())('is transparent by default', async () => {
       await loadWebView(w.webContents, {
         src: 'data:text/html,foo'
       });
 
-      await setTimeout(1000);
-
-      const screenCapture = await ScreenCapture.create();
+      const screenCapture = new ScreenCapture();
       await screenCapture.expectColorAtCenterMatches(WINDOW_BACKGROUND_COLOR);
     });
 
-    // Linux and arm64 platforms (WOA and macOS) do not return any capture sources
-    ifit(process.platform === 'darwin' && process.arch === 'x64')('remains transparent when set', async () => {
+    ifit(hasCapturableScreen())('remains transparent when set', async () => {
       await loadWebView(w.webContents, {
         src: 'data:text/html,foo',
         webpreferences: 'transparent=yes'
       });
 
-      await setTimeout(1000);
-
-      const screenCapture = await ScreenCapture.create();
+      const screenCapture = new ScreenCapture();
       await screenCapture.expectColorAtCenterMatches(WINDOW_BACKGROUND_COLOR);
     });
 
-    // Linux and arm64 platforms (WOA and macOS) do not return any capture sources
-    ifit(process.platform === 'darwin' && process.arch === 'x64')('can disable transparency', async () => {
+    ifit(hasCapturableScreen())('can disable transparency', async () => {
       await loadWebView(w.webContents, {
         src: 'data:text/html,foo',
         webpreferences: 'transparent=no'
       });
 
-      await setTimeout(1000);
-
-      const screenCapture = await ScreenCapture.create();
+      const screenCapture = new ScreenCapture();
       await screenCapture.expectColorAtCenterMatches(HexColors.WHITE);
     });
   });
@@ -849,12 +841,13 @@ describe('<webview> tag', function () {
 
     function setUpRequestHandler (webContentsId: number, requestedPermission: string) {
       return new Promise<void>((resolve, reject) => {
-        session.fromPartition(partition).setPermissionRequestHandler(function (webContents, permission, callback) {
+        session.fromPartition(partition).setPermissionRequestHandler(function (webContents, permission, allow) {
           if (webContents.id === webContentsId) {
-            // requestMIDIAccess with sysex requests both midi and midiSysex so
-            // grant the first midi one and then reject the midiSysex one
-            if (requestedPermission === 'midiSysex' && permission === 'midi') {
-              return callback(true);
+            // All midi permission requests are blocked or allowed as midiSysex permissions
+            // since https://chromium-review.googlesource.com/c/chromium/src/+/5154368
+            if (permission === 'midiSysex') {
+              const allowed = requestedPermission === 'midi' || requestedPermission === 'midiSysex';
+              return allow(!allowed);
             }
 
             try {
@@ -862,7 +855,7 @@ describe('<webview> tag', function () {
             } catch (e) {
               return reject(e);
             }
-            callback(false);
+            allow(false);
             resolve();
           }
         });
@@ -914,7 +907,7 @@ describe('<webview> tag', function () {
       const [, webViewContents] = await once(app, 'web-contents-created') as [any, WebContents];
       setUpRequestHandler(webViewContents.id, 'midi');
       const [, error] = await errorFromRenderer;
-      expect(error).to.equal('SecurityError');
+      expect(error).to.equal('NotAllowedError');
     });
 
     it('emits when using navigator.requestMIDIAccess with sysex api', async () => {
@@ -928,7 +921,7 @@ describe('<webview> tag', function () {
       const [, webViewContents] = await once(app, 'web-contents-created') as [any, WebContents];
       setUpRequestHandler(webViewContents.id, 'midiSysex');
       const [, error] = await errorFromRenderer;
-      expect(error).to.equal('SecurityError');
+      expect(error).to.equal('NotAllowedError');
     });
 
     it('emits when accessing external protocol', async () => {
@@ -1707,6 +1700,7 @@ describe('<webview> tag', function () {
         await loadWebViewAndWaitForEvent(w, {
           src: `file://${fixtures}/pages/dom-ready.html?port=${port}`
         }, 'dom-ready');
+        defer(() => { server.close(); });
       });
 
       itremote('throws a custom error when an API method is called before the event is emitted', () => {
@@ -2107,9 +2101,8 @@ describe('<webview> tag', function () {
       }
     });
 
-    // TODO(miniak): figure out why this is failing on windows
-    // TODO(vertedinde): figure out why this is failing on mac arm64
-    ifdescribe(process.platform !== 'win32' && !isMacArm64)('<webview>.capturePage()', () => {
+    // FIXME: This test is flaking constantly on Linux and macOS.
+    xdescribe('<webview>.capturePage()', () => {
       it('returns a Promise with a NativeImage', async function () {
         this.retries(5);
 

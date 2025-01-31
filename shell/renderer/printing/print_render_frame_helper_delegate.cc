@@ -12,7 +12,7 @@
 #include "third_party/blink/public/web/web_local_frame.h"
 
 #if BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
-#include "chrome/common/pdf_util.h"
+#include "components/pdf/common/pdf_util.h"
 #include "extensions/common/constants.h"
 #include "extensions/renderer/guest_view/mime_handler_view/post_message_support.h"
 #endif  // BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
@@ -34,7 +34,7 @@ blink::WebElement PrintRenderFrameHelperDelegate::GetPdfElement(
     return plugin_element;
   }
 #endif  // BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
-  return blink::WebElement();
+  return {};
 }
 
 bool PrintRenderFrameHelperDelegate::IsPrintPreviewEnabled() {

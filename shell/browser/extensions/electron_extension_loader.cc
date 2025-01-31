@@ -11,7 +11,6 @@
 #include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
-#include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/threading/thread_restrictions.h"
@@ -195,6 +194,16 @@ void ElectronExtensionLoader::PostActivateExtension(
 void ElectronExtensionLoader::PostDeactivateExtension(
     scoped_refptr<const Extension> extension) {}
 
+void ElectronExtensionLoader::PreUninstallExtension(
+    scoped_refptr<const Extension> extension) {}
+
+void ElectronExtensionLoader::PostUninstallExtension(
+    scoped_refptr<const Extension> extension,
+    base::OnceClosure done_callback) {}
+
+void ElectronExtensionLoader::PostNotifyUninstallExtension(
+    scoped_refptr<const Extension> extension) {}
+
 void ElectronExtensionLoader::LoadExtensionForReload(
     const ExtensionId& extension_id,
     const base::FilePath& path,
@@ -210,6 +219,16 @@ void ElectronExtensionLoader::LoadExtensionForReload(
       base::BindOnce(&ElectronExtensionLoader::FinishExtensionReload,
                      weak_factory_.GetWeakPtr(), extension_id));
   did_schedule_reload_ = true;
+}
+
+void ElectronExtensionLoader::ShowExtensionDisabledError(
+    const Extension* extension,
+    bool is_remote_install) {}
+
+void ElectronExtensionLoader::FinishDelayedInstallationsIfAny() {}
+
+bool ElectronExtensionLoader::CanAddExtension(const Extension* extension) {
+  return true;
 }
 
 bool ElectronExtensionLoader::CanEnableExtension(const Extension* extension) {
